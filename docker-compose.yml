@@ -1,0 +1,51 @@
+version: '3.8'  # 兼容 Docker Desktop 20.10+
+
+services:
+  # PostgreSQL 16 数据库服务（Odoo 19 推荐依赖）
+  db:
+    image: postgres:16  # 固定 PostgreSQL 16 版本（兼容 Odoo 19）
+    container_name: odoo19_db  # 容器名称（方便管理）
+    environment:
+      - POSTGRES_USER=andy  # 数据库用户名（Odoo 连接用）
+      - POSTGRES_PASSWORD=andy  # 数据库密码（和用户名对应）
+      - POSTGRES_DB=postgres  # 初始数据库名
+      - PGDATA=/var/lib/postgresql/data/pgdata  # 数据库数据存储路径
+    volumes:
+      # 本地 D:\Odoo19\pgdata 挂载到容器，持久化数据库数据
+      - ./pgdata:/var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"  # 端口映射（本地 5432 → 容器 5432）
+    restart: always  # 容器异常自动重启
+    healthcheck:
+      # 检查数据库是否就绪（避免 Odoo 启动时数据库未准备好）
+      test: ["CMD-SHELL", "pg_isready -U odoo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Odoo 19 服务
+  odoo:
+    image: odoo:19  # 拉取官方 Odoo 19 镜像（最新稳定版）
+    container_name: odoo19  # 容器名称
+    depends_on:
+      db:
+        condition: service_healthy  # 等待数据库就绪后再启动 Odoo
+    environment:
+      - HOST=db  # 数据库服务名（和上面 db 服务一致，Docker 自动解析）
+      - USER=andy  # 数据库用户名（和 POSTGRES_USER 一致）
+      - PASSWORD=andy  # 数据库密码（和 POSTGRES_PASSWORD 一致）
+      - PORT=5432  # 数据库端口（容器内端口，无需修改）
+    volumes:
+      # 本地文件夹挂载到容器，持久化数据和插件
+      - ./data:/var/lib/odoo  # Odoo 系统数据
+      - ./ocm-erp:/mnt/extra-addons  # 自定义插件目录
+      - ./enterprise:/mnt/enterprise-addons  # 企业版插件目录
+      - ./config:/etc/odoo  # 配置文件目录
+    ports:
+      - "8089:8089"  # Odoo 默认端口（本地 8089 → 容器 8089）
+    restart: always  # 容器异常自动重启
+    deploy:
+      resources:
+        limits:
+          cpus: '2'  # 限制 CPU 核心数（根据电脑配置调整，建议 2 核以上）
+          memory: 4G  # 限制内存（建议 4GB 以上，8GB 最佳）
